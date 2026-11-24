@@ -1,9 +1,12 @@
 
-from flask import Flask, request, jsonify, render_template
+from flask import Flask, request, jsonify, render_template, session
 import sqlite3
 from werkzeug.security import generate_password_hash, check_password_hash
 
 app = Flask(__name__)
+
+# Clave necesaria para mantener las sesiones
+app.secret_key = "clave_secreta_para_el_proyecto"
 
 DATABASE = "tareas.db"
 
@@ -42,6 +45,7 @@ def crear_tablas():
 
     cursor.execute("PRAGMA table_info(tareas)")
     columnas_tareas = {columna["name"] for columna in cursor.fetchall()}
+
     if "usuario_id" not in columnas_tareas:
         cursor.execute(
             "ALTER TABLE tareas ADD COLUMN usuario_id INTEGER REFERENCES usuarios(id)"
@@ -126,6 +130,11 @@ def login():
         usuario_db["contraseña"],
         contraseña
     ):
+
+        # Crear sesión del usuario
+        session.clear()
+        session["usuario"] = usuario
+
         return jsonify({
             "mensaje": "Inicio de sesión correcto",
             "usuario": usuario
@@ -134,6 +143,19 @@ def login():
     return jsonify({
         "error": "Usuario o contraseña incorrectos"
     }), 401
+
+
+# -------------------------
+# Cerrar sesión
+# -------------------------
+@app.route("/logout", methods=["POST"])
+def logout():
+
+    session.clear()
+
+    return jsonify({
+        "mensaje": "Sesión cerrada correctamente"
+    }), 200
 
 
 # -------------------------
@@ -149,34 +171,51 @@ def tareas():
 # -------------------------
 @app.route("/api/tareas", methods=["GET", "POST"])
 def api_tareas():
+
+    # Verificar si hay una sesión iniciada
+    usuario = session.get("usuario")
+
+    if not usuario:
+        return jsonify({
+            "error": "Debe iniciar sesión primero"
+        }), 401
+
     if request.method == "POST":
+
         datos = request.get_json()
+
         if (
             not datos
-            or not isinstance(datos.get("usuario"), str)
             or not isinstance(datos.get("descripcion"), str)
-            or not datos["usuario"].strip()
             or not datos["descripcion"].strip()
         ):
             return jsonify({
-                "error": "Debe enviar usuario y descripción de la tarea"
+                "error": "Debe enviar la descripción de la tarea"
             }), 400
 
         conexion = conectar_db()
         cursor = conexion.cursor()
+
         cursor.execute(
             "SELECT id FROM usuarios WHERE usuario = ?",
-            (datos["usuario"],)
+            (usuario,)
         )
+
         usuario_db = cursor.fetchone()
+
         if usuario_db is None:
             conexion.close()
-            return jsonify({"error": "El usuario no existe"}), 404
+            session.clear()
+
+            return jsonify({
+                "error": "El usuario no existe"
+            }), 404
 
         cursor.execute(
             "INSERT INTO tareas (descripcion, usuario_id) VALUES (?, ?)",
             (datos["descripcion"].strip(), usuario_db["id"])
         )
+
         conexion.commit()
         tarea_id = cursor.lastrowid
         conexion.close()
@@ -186,28 +225,37 @@ def api_tareas():
             "id": tarea_id
         }), 201
 
-    usuario = request.args.get("usuario", "").strip()
-    if not usuario:
-        return jsonify({"error": "Debe indicar el usuario"}), 400
+    # -------------------------
+    # Listar tareas del usuario
+    # -------------------------
 
     conexion = conectar_db()
     cursor = conexion.cursor()
+
     cursor.execute(
         "SELECT id FROM usuarios WHERE usuario = ?",
         (usuario,)
     )
+
     usuario_db = cursor.fetchone()
+
     if usuario_db is None:
         conexion.close()
-        return jsonify({"error": "El usuario no existe"}), 404
+        session.clear()
+
+        return jsonify({
+            "error": "El usuario no existe"
+        }), 404
 
     cursor.execute(
         "SELECT id, descripcion FROM tareas WHERE usuario_id = ? ORDER BY id",
         (usuario_db["id"],)
     )
+
     tareas_usuario = [
         dict(tarea) for tarea in cursor.fetchall()
     ]
+
     conexion.close()
 
     if not tareas_usuario:

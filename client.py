@@ -3,6 +3,9 @@ import requests
 
 URL_BASE = "http://127.0.0.1:5000"
 
+# Mantener las cookies de sesión entre solicitudes
+sesion = requests.Session()
+
 
 # -------------------------
 # Registrar usuario
@@ -19,7 +22,7 @@ def registrar_usuario():
         "contraseña": contraseña
     }
 
-    respuesta = requests.post(
+    respuesta = sesion.post(
         f"{URL_BASE}/registro",
         json=datos
     )
@@ -43,7 +46,7 @@ def login():
         "contraseña": contraseña
     }
 
-    respuesta = requests.post(
+    respuesta = sesion.post(
         f"{URL_BASE}/login",
         json=datos
     )
@@ -61,15 +64,28 @@ def login():
 
 
 # -------------------------
+# Cerrar sesión
+# -------------------------
+def logout():
+
+    respuesta = sesion.post(
+        f"{URL_BASE}/logout"
+    )
+
+    print("\nRespuesta del servidor:")
+    print(respuesta.json())
+
+
+# -------------------------
 # Agregar tarea
 # -------------------------
-def agregar_tarea(usuario):
+def agregar_tarea():
+
     descripcion = input("Descripción de la tarea: ").strip()
 
-    respuesta = requests.post(
+    respuesta = sesion.post(
         f"{URL_BASE}/api/tareas",
         json={
-            "usuario": usuario,
             "descripcion": descripcion
         }
     )
@@ -80,13 +96,12 @@ def agregar_tarea(usuario):
 # -------------------------
 # Listar tareas
 # -------------------------
-def listar_tareas(usuario):
+def listar_tareas():
 
     print("\n--- LISTA DE TAREAS ---")
 
-    respuesta = requests.get(
-        f"{URL_BASE}/api/tareas",
-        params={"usuario": usuario}
+    respuesta = sesion.get(
+        f"{URL_BASE}/api/tareas"
     )
 
     if respuesta.status_code == 200:
@@ -111,7 +126,8 @@ def listar_tareas(usuario):
 # Ver HTML de /tareas
 # -------------------------
 def ver_html():
-    respuesta = requests.get(f"{URL_BASE}/tareas")
+
+    respuesta = sesion.get(f"{URL_BASE}/tareas")
 
     if respuesta.status_code == 200:
         print("\n--- HTML DE /tareas ---")
@@ -124,34 +140,56 @@ def ver_html():
 # Menú principal
 # -------------------------
 def menu():
+
     usuario_actual = None
 
     while True:
+
         print("\n1) Registrar usuario")
         print("2) Login")
         print("3) Agregar tarea")
         print("4) Listar tareas")
         print("5) Ver HTML de /tareas")
-        print("6) Salir")
+        print("6) Cerrar sesión")
+        print("7) Salir")
+
         opcion = input("> ")
+
         if opcion == "1":
             registrar_usuario()
+
         elif opcion == "2":
             usuario_actual = login()
+
         elif opcion == "3":
             if usuario_actual:
-                agregar_tarea(usuario_actual)
+                agregar_tarea()
             else:
                 print("Debes iniciar sesión primero.")
+
         elif opcion == "4":
             if usuario_actual:
-                listar_tareas(usuario_actual)
+                listar_tareas()
             else:
                 print("Debes iniciar sesión primero.")
+
         elif opcion == "5":
             ver_html()
+
         elif opcion == "6":
+            if usuario_actual:
+                logout()
+                usuario_actual = None
+            else:
+                print("No hay ninguna sesión iniciada.")
+
+        elif opcion == "7":
+            if usuario_actual:
+                logout()
+
+            print("\nCliente finalizado.")
             break
+
         else:
             print("Opción inválida.")
 
